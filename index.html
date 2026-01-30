@@ -246,6 +246,10 @@
             const canvasRef = useRef(null);
             const [stream, setStream] = useState(null);
             const [errorMsg, setErrorMsg] = useState(null);
+            const [cameras, setCameras] = useState([]);
+            const [selectedDeviceId, setSelectedDeviceId] = useState(() => {
+                return sessionStorage.getItem('selectedCameraId') || null;
+            });
 
             // Start Camera
             useEffect(() => {
@@ -260,16 +264,29 @@
                     }
 
                     try {
+                        const devices = await navigator.mediaDevices.enumerateDevices();
+                        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                        setCameras(videoDevices);
+
+                        // If no specific camera selected (or previously selected one missing), try storage or default
+                        let targetDeviceId = selectedDeviceId;
+
+                        // If we have a saved ID but it's not in the current list, reset it
+                        if (targetDeviceId && !videoDevices.find(d => d.deviceId === targetDeviceId)) {
+                            targetDeviceId = null;
+                        }
+
+                        // Determine constraints
                         const constraints = {
-                            video: {
-                                facingMode: 'environment',
-                                width: { ideal: 1920 },
-                                height: { ideal: 1080 }
-                            }
+                            video: targetDeviceId
+                                ? { deviceId: { exact: targetDeviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+                                : { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
                         };
 
                         const s = await navigator.mediaDevices.getUserMedia(constraints);
                         currentStream = s;
+
+                        // If we didn't have a specific ID, update state to the one actually used (if accessable)
                         setStream(s);
                         setErrorMsg(null);
                         if (videoRef.current) videoRef.current.srcObject = s;
@@ -285,8 +302,8 @@
                             msg = "相機權限被拒絕。\n\n請檢查瀏覽器網址列右側的相機圖示，確認是否已允許存取。";
                         }
 
-                        // Retry only if not file protocol
-                        if (window.location.protocol !== 'file:') {
+                        // Retry only if not file protocol and initial attempt failed without specific ID
+                        if (window.location.protocol !== 'file:' && !selectedDeviceId) {
                             try {
                                 const s = await navigator.mediaDevices.getUserMedia({ video: true });
                                 currentStream = s;
@@ -319,6 +336,29 @@
                     videoRef.current.srcObject = stream;
                 }
             }, [videoRef, stream]);
+
+            const switchCamera = async (deviceId) => {
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+
+                try {
+                    const constraints = {
+                        video: {
+                            deviceId: { exact: deviceId },
+                            width: { ideal: 1920 },
+                            height: { ideal: 1080 }
+                        }
+                    };
+                    const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+                    setStream(newStream);
+                    setSelectedDeviceId(deviceId);
+                    sessionStorage.setItem('selectedCameraId', deviceId);
+                } catch (err) {
+                    console.error("Failed to switch camera", err);
+                    setErrorMsg("切換鏡頭失敗: " + err.message);
+                }
+            };
 
             const handleCapture = () => {
                 if (!videoRef.current || !canvasRef.current || isProcessing) return;
@@ -437,7 +477,24 @@
                                     )}
                                 </button>
 
-                                <div className="w-14"></div> {/* Spacer for symmetry */}
+                                {cameras.length > 1 ? (
+                                    <div className="flex flex-col gap-2">
+                                        {cameras.map((cam, idx) => (
+                                            <button
+                                                key={cam.deviceId}
+                                                onClick={() => switchCamera(cam.deviceId)}
+                                                className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold border backdrop-blur-md transition-all ${selectedDeviceId === cam.deviceId || (!selectedDeviceId && idx === 0 && !selectedDeviceId)
+                                                        ? "bg-white text-black border-white"
+                                                        : "bg-black/40 text-white border-white/20 hover:bg-white/20"
+                                                    }`}
+                                            >
+                                                {idx + 1}
+                                            </button>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="w-14"></div>
+                                )}
                             </div>
                             <canvas ref={canvasRef} className="hidden"></canvas>
                         </>
@@ -520,6 +577,28 @@
             const [isRecorded, setIsRecorded] = useState(false);
             const [apiKey, setApiKey] = useState('');
             const [selectedModel, setSelectedModel] = useState('gemini-2.5-flash-lite');
+
+            // PC Detection
+            const [isMobile, setIsMobile] = useState(true);
+
+            useEffect(() => {
+                const checkIsMobile = () => {
+                    const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+                    // regex for detecting mobile devices
+                    const mobileRegex = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
+                    // Also check for touch points as fallback for iPad Pro etc which might report MacIntel
+                    const isTouch = navigator.maxTouchPoints > 0;
+
+                    if (mobileRegex.test(userAgent) || (isTouch && window.innerWidth < 1024)) {
+                        setIsMobile(true);
+                    } else {
+                        setIsMobile(false);
+                    }
+                };
+                checkIsMobile();
+                window.addEventListener('resize', checkIsMobile);
+                return () => window.removeEventListener('resize', checkIsMobile);
+            }, []);
 
             // UI States
             const [showSettings, setShowSettings] = useState(false);
@@ -635,11 +714,16 @@
                             {/* Smart Action Bar */}
                             <div className="bg-blue-50 p-2 rounded-2xl flex gap-2">
                                 <button
-                                    onClick={startCamera}
-                                    className="flex-1 bg-white py-3 rounded-xl shadow-sm text-blue-600 font-bold flex items-center justify-center gap-2 border border-blue-100 active:scale-95 transition-all"
+                                    onClick={isMobile ? startCamera : null}
+                                    disabled={!isMobile}
+                                    className={`flex-1 py-3 rounded-xl shadow-sm font-bold flex items-center justify-center gap-2 border transition-all ${isMobile
+                                        ? "bg-white text-blue-600 border-blue-100 active:scale-95 cursor-pointer"
+                                        : "bg-gray-100 text-gray-400 border-gray-200 grayscale cursor-not-allowed"
+                                        }`}
+                                    title={!isMobile ? "請使用手機或平板進行掃描" : ""}
                                 >
                                     <IconCamera className="w-5 h-5" />
-                                    相機掃描
+                                    {isMobile ? "相機掃描" : "僅支援行動裝置"}
                                 </button>
                             </div>
 
