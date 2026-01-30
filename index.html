@@ -219,7 +219,7 @@
         };
 
         // 2. Camera Modal
-        const CameraModal = ({ isOpen, onClose, onCapture, isProcessing, selectedModel, setSelectedModel }) => {
+        const CameraModal = ({ onClose, onCapture, isProcessing, selectedModel, setSelectedModel }) => {
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
             const [stream, setStream] = useState(null);
@@ -230,7 +230,6 @@
                 let currentStream = null;
 
                 const initCamera = async () => {
-                    if (!isOpen) return;
 
                     // Check for secure context and mediaDevices support
                     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -289,9 +288,8 @@
                     if (currentStream) {
                         currentStream.getTracks().forEach(track => track.stop());
                     }
-                    setStream(null);
                 };
-            }, [isOpen]); // Only depend on isOpen
+            }, []); // Mount/Unmount only
 
             // Ensure video plays when reference update
             useEffect(() => {
@@ -333,8 +331,6 @@
                 setErrorMsg(null);
                 onClose();
             };
-
-            if (!isOpen) return null;
 
             return (
                 <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center">
@@ -705,14 +701,15 @@
                         setApiKey={setApiKey}
                     />
 
-                    <CameraModal
-                        isOpen={showCamera && !ocrResult}
-                        onClose={() => setShowCamera(false)}
-                        onCapture={handleImageCapture}
-                        isProcessing={isProcessing}
-                        selectedModel={selectedModel}
-                        setSelectedModel={setSelectedModel}
-                    />
+                    {showCamera && !ocrResult && (
+                        <CameraModal
+                            onClose={() => setShowCamera(false)}
+                            onCapture={handleImageCapture}
+                            isProcessing={isProcessing}
+                            selectedModel={selectedModel}
+                            setSelectedModel={setSelectedModel}
+                        />
+                    )}
 
                     {ocrResult && (
                         <ConfirmDialog
