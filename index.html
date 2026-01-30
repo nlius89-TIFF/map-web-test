@@ -119,36 +119,58 @@
         const recognizeBloodPressure = async (base64Image, apiKey, modelName = "gemini-2.5-flash-lite") => {
             if (!window.GoogleGenerativeAI) throw new Error("Gemini SDK not loaded");
 
-            // Update 2026: Use stable version 2.5
             const genAI = new window.GoogleGenerativeAI(apiKey);
             const model = genAI.getGenerativeModel({ model: modelName });
 
+            // Using new Universal Prompt (Smart Watch compatible & Step-by-step reasoning)
             const prompt = `
-                Analyze this image of a blood pressure monitor screen.
-                Identify the Systolic (SYS/mmHg - higher number) and Diastolic (DIA/mmHg - lower number) values.
-                Focus on the largest digital numbers on the 7-segment display.
-                Ignore pulse rate, time, or date.
-                Return ONLY a JSON object and nothing else.
-                Format: { "sbp": number, "dbp": number }
-                If the numbers are legible, return the values. If not, return { "error": "Not readable" }
+                Analyze this image of a blood pressure monitor (or smart watch) screen.
+                Identify the three key values: Systolic (SYS), Diastolic (DIA), and Pulse (Heart Rate).
+
+                Step-by-step reasoning for extraction:
+                1. **Look for Labels**: Priority is given to numbers next to labels like "SYS", "DIA", "mmHg", "PUL", "/min", or a "Heart/Cardio Icon".
+                2. **Logic Check**: 
+                   - Systolic (SYS) is typically the highest pressure value.
+                   - Diastolic (DIA) is lower than Systolic.
+                   - Pulse is the heart rate (often labeled with a heart icon or 'min').
+                3. **Layout Agnostic**: The numbers can be arranged vertically, horizontally, or on a watch face. Do not assume a fixed top-to-bottom order.
+                
+                Ignore time (AM/PM, : chars) and date.
+
+                Return ONLY a JSON object:
+                { "sbp": number, "dbp": number, "pulse": number }
+                
+                If completely unreadable, return { "error": "Not readable" }
             `;
 
             const imagePart = {
                 inlineData: {
-                    data: base64Image.split(',')[1],
-                    mimeType: "image/jpeg"
-                }
+                    data: base64Image.includes(',') ? base64Image.split(',')[1] : base64Image,
+                    mimeType: "image/jpeg",
+                },
             };
 
             try {
                 const result = await model.generateContent([prompt, imagePart]);
                 const response = await result.response;
                 const text = response.text();
-                const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-                return JSON.parse(cleanText);
-            } catch (err) {
-                console.error("Gemini Error:", err);
-                throw err;
+
+                const cleanedText = text.replace(/```json|```/g, "").trim();
+                const data = JSON.parse(cleanedText);
+
+                // --- JavaScript Logic Check (Safety Net) ---
+                if (data.sbp && data.dbp) {
+                    // Ensure SBP > DBP
+                    if (Number(data.sbp) < Number(data.dbp)) {
+                        console.warn("Logic Error Detected (SBP < DBP). Swapping values.");
+                        [data.sbp, data.dbp] = [data.dbp, data.sbp];
+                    }
+                }
+
+                return data;
+            } catch (error) {
+                console.error("Error recognizing blood pressure:", error);
+                return { error: error.message };
             }
         };
 
