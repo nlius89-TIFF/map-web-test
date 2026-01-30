@@ -119,7 +119,8 @@
             if (!window.GoogleGenerativeAI) throw new Error("Gemini SDK not loaded");
 
             const genAI = new window.GoogleGenerativeAI(apiKey);
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            // Use specific model version to avoid 404 on some clients/regions
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-001" });
 
             const prompt = `
                 Analyze this image of a blood pressure monitor screen.
@@ -354,9 +355,9 @@
                                 />
 
                                 {/* Overlay Guide */}
-                                <div className="relative z-10 w-72 h-48 border-2 border-white/50 rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] overflow-hidden">
+                                <div className="relative z-10 w-11/12 max-w-sm aspect-[4/3] border-4 border-white/70 rounded-3xl shadow-[0_0_0_9999px_rgba(0,0,0,0.6)] overflow-hidden">
                                     <div className="absolute top-0 right-0 p-2 bg-black/50 text-white text-xs rounded-bl-lg font-mono">
-                                        Scan Zone
+                                        7-Segment LCD Mode
                                     </div>
                                     {isProcessing && <div className="scan-line"></div>}
 
