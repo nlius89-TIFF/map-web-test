@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>BP Reader - 血壓紀錄助手</title>
+    <!-- React & Tailwind -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Import Map for Gemini SDK -->
+    <script type="importmap">
+    {
+        "imports": {
+            "@google/generative-ai": "https://esm.run/@google/generative-ai"
+        }
+    }
+    </script>
+
+    <!-- Expose Gemini to Global Scope -->
+    <script type="module">
+        import { GoogleGenerativeAI } from "@google/generative-ai";
+        window.GoogleGenerativeAI = GoogleGenerativeAI;
+    </script>
+
+    <style>
+        input:focus {
+            font-size: 16px !important;
+        }
+
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        /* Loading Animation */
+        .scan-line {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: #60A5FA;
+            box-shadow: 0 0 10px #3B82F6;
+            animation: scan 2s infinite linear;
+        }
+
+        @keyframes scan {
+            0% {
+                top: 0%;
+                opacity: 0;
+            }
+
+            10% {
+                opacity: 1;
+            }
+
+            90% {
+                opacity: 1;
+            }
+
+            100% {
+                top: 100%;
+                opacity: 0;
+            }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100 selection:bg-blue-200">
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        const { useState, useEffect, useRef, useCallback } = React;
+
+        // --- Icons (Inline SVGs to replace Lucide dependency) ---
+        const IconCamera = ({ className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" /><circle cx="12" cy="13" r="3" /></svg>
+        );
+        const IconSettings = ({ className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" /></svg>
+        );
+        const IconX = ({ className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+        );
+        const IconCheck = ({ className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M20 6 9 17l-5-5" /></svg>
+        );
+        const IconInfo = ({ className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></svg>
+        );
+
+        // --- Services ---
+        const recognizeBloodPressure = async (base64Image, apiKey) => {
+            if (!window.GoogleGenerativeAI) throw new Error("Gemini SDK not loaded");
+
+            const genAI = new window.GoogleGenerativeAI(apiKey);
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+            const prompt = `
+                Analyze this image of a blood pressure monitor screen.
+                Identify the Systolic (SYS/mmHg - higher number) and Diastolic (DIA/mmHg - lower number) values.
+                Focus on the largest digital numbers on the 7-segment display.
+                Ignore pulse rate, time, or date.
+                Return ONLY a JSON object and nothing else.
+                Format: { "sbp": number, "dbp": number }
+                If the numbers are not clearly visible, return { "error": "Not readable" }
+            `;
+
+            // Prepare base64 string (remove header if present)
+            const imagePart = {
+                inlineData: {
+                    data: base64Image.split(',')[1],
+                    mimeType: "image/jpeg"
+                }
+            };
+
+            try {
+                const result = await model.generateContent([prompt, imagePart]);
+                const response = await result.response;
+                const text = response.text();
+
+                // Clean markdown code blocks if present
+                const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+                return JSON.parse(cleanText);
+            } catch (err) {
+                console.error("Gemini Error:", err);
+                throw err;
+            }
+        };
+
+        // --- Components ---
+
+        // 1. Settings Modal
+        const SettingsModal = ({ isOpen, onClose, apiKey, setApiKey }) => {
+            const [inputKey, setInputKey] = useState(apiKey);
+
+            useEffect(() => { setInputKey(apiKey); }, [apiKey]);
+
+            const handleSave = () => {
+                setApiKey(inputKey);
+                localStorage.setItem('gemini_api_key', inputKey);
+                onClose();
+            };
+
+            if (!isOpen) return null;
+
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm fade-in">
+                    <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-xl font-bold text-gray-800">設定</h2>
+                            <button onClick={onClose} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200">
+                                <IconX className="w-5 h-5 text-gray-500" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-600 mb-1">Gemini API Key</label>
+                                <input
+                                    type="password"
+                                    value={inputKey}
+                                    onChange={(e) => setInputKey(e.target.value)}
+                                    placeholder="貼上你的 API Key"
+                                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all"
+                                />
+                            </div>
+
+                            <div className="bg-blue-50 p-4 rounded-xl flex gap-3 items-start">
+                                <IconInfo className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                                <div className="text-sm text-blue-700">
+                                    <p className="font-bold mb-1">如何取得免費 Key？</p>
+                                    <p className="mb-2">個人開發者可免費申請 Google Gemini API。</p>
+                                    <a
+                                        href="https://aistudio.google.com/app/apikey"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-block bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-700 transition"
+                                    >
+                                        前往申請 ↗
+                                    </a>
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={handleSave}
+                                className="w-full py-3 bg-gray-900 text-white rounded-xl font-bold shadow-lg active:scale-95 transition-transform"
+                            >
+                                儲存設定
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // 2. Camera Modal
+        const CameraModal = ({ isOpen, onClose, onCapture, isProcessing }) => {
+            const videoRef = useRef(null);
+            const canvasRef = useRef(null);
+            const [stream, setStream] = useState(null);
+            const [errorMsg, setErrorMsg] = useState(null);
+
+            // Start Camera
+            useEffect(() => {
+                const initCamera = async () => {
+                    if (!isOpen || stream) return;
+
+                    // Check for secure context and mediaDevices support
+                    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                        setErrorMsg("您的瀏覽器不支援相機存取，或因安全性限制（如：非 Localhost / HTTPS 環境）而遭封鎖。");
+                        return;
+                    }
+
+                    try {
+                        const constraints = {
+                            video: {
+                                facingMode: 'environment', // Try rear camera first
+                                width: { ideal: 1920 },
+                                height: { ideal: 1080 }
+                            }
+                        };
+
+                        const s = await navigator.mediaDevices.getUserMedia(constraints);
+                        setStream(s);
+                        setErrorMsg(null);
+                        if (videoRef.current) videoRef.current.srcObject = s;
+                    } catch (err) {
+                        console.error("Camera Error", err);
+
+                        let msg = `無法開啟相機: ${err.message || "權限被拒或裝置不支援"}`;
+
+                        // Check for common 'file://' protocol issue
+                        if (window.location.protocol === 'file:') {
+                            msg = "瀏覽器安全性限制：無法在直接開啟檔案 (file://) 的模式下使用相機。\n\n解決方法：\n請使用 VS Code 的 'Live Server' 套件，或將檔案放到網頁伺服器上執行。";
+                        } else if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                            msg = "相機權限被拒絕。\n\n請檢查瀏覽器網址列右側的相機圖示，確認是否已允許存取。";
+                        }
+
+                        // Retry only if not file protocol
+                        if (window.location.protocol !== 'file:') {
+                            try {
+                                const s = await navigator.mediaDevices.getUserMedia({ video: true });
+                                setStream(s);
+                                setErrorMsg(null);
+                                if (videoRef.current) videoRef.current.srcObject = s;
+                                return;
+                            } catch (retryErr) {
+                                // Fall through to show error
+                            }
+                        }
+
+                        setErrorMsg(msg);
+                    }
+                };
+
+                initCamera();
+
+                // Cleanup function
+                return () => {
+                    if (stream) {
+                        stream.getTracks().forEach(track => track.stop());
+                    }
+                };
+            }, [isOpen, stream]); // Added stream to dependency for proper cleanup
+
+            // Ensure video plays when reference update
+            useEffect(() => {
+                if (videoRef.current && stream) {
+                    videoRef.current.srcObject = stream;
+                }
+            }, [videoRef, stream]);
+
+            const handleCapture = () => {
+                if (!videoRef.current || !canvasRef.current || isProcessing) return;
+
+                const video = videoRef.current;
+                const canvas = canvasRef.current;
+
+                // Set canvas to video dimension
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                // Get Base64
+                const imageData = canvas.toDataURL('image/jpeg', 0.8);
+                onCapture(imageData);
+
+                // Stop stream internally is handled by effect cleanup when parent closes modal
+                // But we can stop here too to separate concerns
+            };
+
+            // Handle closing with cleanup
+            const handleClose = () => {
+                setErrorMsg(null); // Reset error
+                onClose();
+            };
+
+            if (!isOpen) return null;
+
+            return (
+                <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center">
+                    {/* Error State Overlay */}
+                    {errorMsg ? (
+                        <div className="bg-white p-8 rounded-3xl max-w-xs text-center mx-4">
+                            <div className="text-red-500 mb-4 flex justify-center">
+                                <IconInfo className="w-12 h-12" />
+                            </div>
+                            <h3 className="text-xl font-bold text-gray-800 mb-2">相機無法啟動</h3>
+                            <p className="text-gray-600 mb-6 text-sm leading-relaxed">{errorMsg}</p>
+                            <button
+                                onClick={handleClose}
+                                className="w-full py-3 bg-gray-900 text-white rounded-xl font-bold active:scale-95 transition-transform"
+                            >
+                                關閉
+                            </button>
+                        </div>
+                    ) : (
+                        <>
+                            {/* Video Feed */}
+                            <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
+                                <video
+                                    ref={videoRef}
+                                    autoPlay
+                                    playsInline
+                                    className="absolute min-w-full min-h-full object-cover opacity-80"
+                                />
+
+                                {/* Overlay Guide */}
+                                <div className="relative z-10 w-72 h-48 border-2 border-white/50 rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] overflow-hidden">
+                                    <div className="absolute top-0 right-0 p-2 bg-black/50 text-white text-xs rounded-bl-lg font-mono">
+                                        Scan Zone
+                                    </div>
+                                    {isProcessing && <div className="scan-line"></div>}
+
+                                    {/* Corner Markers */}
+                                    <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-white"></div>
+                                    <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-white"></div>
+                                    <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-white"></div>
+                                    <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-white"></div>
+                                </div>
+
+                                <p className="absolute bottom-32 text-white/90 text-sm font-medium bg-black/40 px-4 py-2 rounded-full backdrop-blur-sm">
+                                    將數字對準框內(盡量充滿畫面)
+                                </p>
+                            </div>
+
+                            {/* Controls */}
+                            <div className="absolute bottom-0 w-full p-8 pb-12 flex justify-between items-center bg-gradient-to-t from-black/80 to-transparent">
+                                <button onClick={handleClose} className="p-4 bg-white/20 rounded-full backdrop-blur-md text-white">
+                                    <IconX />
+                                </button>
+
+                                <button
+                                    onClick={handleCapture}
+                                    disabled={isProcessing}
+                                    className="w-20 h-20 bg-white rounded-full border-4 border-gray-300 shadow-xl flex items-center justify-center active:scale-90 transition-transform"
+                                >
+                                    {isProcessing ? (
+                                        <div className="w-6 h-6 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin"></div>
+                                    ) : (
+                                        <div className="w-16 h-16 bg-white rounded-full border-2 border-black"></div>
+                                    )}
+                                </button>
+
+                                <div className="w-14"></div> {/* Spacer for symmetry */}
+                            </div>
+                            <canvas ref={canvasRef} className="hidden"></canvas>
+                        </>
+                    )}
+                </div>
+            );
+        };
+
+        // 3. Confirmation Dialog
+        const ConfirmDialog = ({ result, onConfirm, onCancel, imageSrc }) => {
+            const [editSbp, setEditSbp] = useState(result?.sbp || '');
+            const [editDbp, setEditDbp] = useState(result?.dbp || '');
+
+            useEffect(() => {
+                if (result) {
+                    setEditSbp(result.sbp);
+                    setEditDbp(result.dbp);
+                }
+            }, [result]);
+
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm fade-in">
+                    <div className="bg-white w-full max-w-sm rounded-[2rem] overflow-hidden shadow-2xl">
+                        {/* Preview Image Header */}
+                        <div className="h-32 bg-gray-100 relative overflow-hidden flex items-center justify-center">
+                            <img src={imageSrc} className="w-full h-full object-cover opacity-50 blur-sm" />
+                            <img src={imageSrc} className="absolute h-full object-contain shadow-lg" />
+                            <div className="absolute inset-0 bg-gradient-to-b from-transparent to-white/90"></div>
+                        </div>
+
+                        <div className="p-6 pt-2">
+                            <h3 className="text-center text-lg font-bold text-gray-800 mb-6">確認辨識結果</h3>
+
+                            <div className="grid grid-cols-2 gap-4 mb-6">
+                                <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                                    <label className="text-xs text-gray-400 font-bold block mb-1 text-center">收縮壓</label>
+                                    <input
+                                        type="number"
+                                        value={editSbp}
+                                        onChange={(e) => setEditSbp(e.target.value)}
+                                        className="w-full text-center text-3xl font-black text-blue-900 bg-transparent outline-none"
+                                    />
+                                </div>
+                                <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                                    <label className="text-xs text-gray-400 font-bold block mb-1 text-center">舒張壓</label>
+                                    <input
+                                        type="number"
+                                        value={editDbp}
+                                        onChange={(e) => setEditDbp(e.target.value)}
+                                        className="w-full text-center text-3xl font-black text-blue-900 bg-transparent outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={onCancel}
+                                    className="flex-1 py-3 bg-gray-100 text-gray-600 font-bold rounded-xl"
+                                >
+                                    重拍
+                                </button>
+                                <button
+                                    onClick={() => onConfirm(editSbp, editDbp)}
+                                    className="flex-[2] py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg shadow-blue-200"
+                                >
+                                    確認填入
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- Main App ---
+        const App = () => {
+            const [sbp, setSbp] = useState('');
+            const [dbp, setDbp] = useState('');
+            const [map, setMap] = useState('--');
+            const [isRecorded, setIsRecorded] = useState(false);
+            const [apiKey, setApiKey] = useState('');
+
+            // UI States
+            const [showSettings, setShowSettings] = useState(false);
+            const [showCamera, setShowCamera] = useState(false);
+            const [isProcessing, setIsProcessing] = useState(false);
+            const [ocrResult, setOcrResult] = useState(null);
+            const [capturedImage, setCapturedImage] = useState(null);
+
+            const dbpInputRef = useRef(null);
+
+            // Load API Key
+            useEffect(() => {
+                const storedKey = localStorage.getItem('gemini_api_key');
+                if (storedKey) setApiKey(storedKey);
+            }, []);
+
+            // Calculation Logic
+            useEffect(() => {
+                if (sbp && dbp) {
+                    const result = ((Number(sbp) + 2 * Number(dbp)) / 3).toFixed(1);
+                    setMap(isNaN(result) ? '--' : result);
+                } else {
+                    setMap('--');
+                }
+            }, [sbp, dbp]);
+
+            const handleInputChange = (type, value) => {
+                if (value.length > 3) return;
+                if (type === 'sbp') {
+                    setSbp(value);
+                    if (value.length > 0) {
+                        const firstDigit = value[0];
+                        if (firstDigit === '1' || firstDigit === '2') {
+                            if (value.length >= 3) dbpInputRef.current?.focus();
+                        } else {
+                            if (value.length >= 2) dbpInputRef.current?.focus();
+                        }
+                    }
+                }
+                if (type === 'dbp') setDbp(value);
+                setIsRecorded(false);
+            };
+
+            const handleInputFocus = () => {
+                if (isRecorded) {
+                    setSbp(''); setDbp(''); setMap('--'); setIsRecorded(false);
+                }
+            };
+
+            const handleRecordClick = () => {
+                if (!sbp || !dbp) return;
+                setIsRecorded(true);
+            };
+
+            // Camera & OCR Handlers
+            const startCamera = () => {
+                if (!apiKey) {
+                    alert("請先在設定中輸入 Gemini API Key");
+                    setShowSettings(true);
+                    return;
+                }
+                setShowCamera(true);
+            };
+
+            const handleImageCapture = async (imageData) => {
+                setIsProcessing(true);
+                setCapturedImage(imageData);
+
+                try {
+                    const result = await recognizeBloodPressure(imageData, apiKey);
+                    if (result.error) {
+                        alert("辨識失敗，請調整角度再試一次");
+                        setIsProcessing(false);
+                        setShowCamera(false); // Close to retry
+                        return;
+                    }
+                    setOcrResult(result); // Show confirm dialog
+                } catch (e) {
+                    alert("連線錯誤或辨識失敗: " + e.message);
+                    setShowCamera(false);
+                } finally {
+                    setIsProcessing(false);
+                }
+            };
+
+            const confirmOcrResult = (newSbp, newDbp) => {
+                setSbp(String(newSbp));
+                setDbp(String(newDbp));
+                setOcrResult(null);
+                setShowCamera(false);
+                setIsRecorded(false);
+            };
+
+            return (
+                <div className="flex flex-col items-center p-3 min-h-screen text-gray-800">
+                    <div className="w-full max-w-sm bg-white rounded-[2.5rem] shadow-2xl border border-gray-100 overflow-hidden relative">
+
+                        {/* Header */}
+                        <div className="bg-blue-600 p-6 text-white text-center relative">
+                            <h1 className="text-2xl font-black tracking-widest">血壓紀錄助手</h1>
+                            <p className="text-blue-100 text-xs mt-1 font-medium italic">Gemini Vision OCR Enabled</p>
+
+                            <button
+                                onClick={() => setShowSettings(true)}
+                                className="absolute top-6 right-6 p-2 bg-blue-500 rounded-full hover:bg-blue-400 transition"
+                            >
+                                <IconSettings className="w-5 h-5 text-white" />
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-6">
+
+                            {/* Smart Action Bar */}
+                            <div className="bg-blue-50 p-2 rounded-2xl flex gap-2">
+                                <button
+                                    onClick={startCamera}
+                                    className="flex-1 bg-white py-3 rounded-xl shadow-sm text-blue-600 font-bold flex items-center justify-center gap-2 border border-blue-100 active:scale-95 transition-all"
+                                >
+                                    <IconCamera className="w-5 h-5" />
+                                    相機掃描
+                                </button>
+                            </div>
+
+                            {/* Inputs */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-bold text-gray-400 block text-center">收縮壓 (高壓)</label>
+                                    <input
+                                        type="number"
+                                        inputMode="decimal"
+                                        value={sbp}
+                                        onChange={(e) => handleInputChange('sbp', e.target.value)}
+                                        onFocus={handleInputFocus}
+                                        placeholder="120"
+                                        className="w-full px-2 py-4 bg-gray-50 rounded-2xl text-3xl font-black text-center outline-none border-2 border-transparent focus:border-blue-500 transition-all placeholder:text-gray-200"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-bold text-gray-400 block text-center">舒張壓 (低壓)</label>
+                                    <input
+                                        ref={dbpInputRef}
+                                        type="number"
+                                        inputMode="decimal"
+                                        value={dbp}
+                                        onChange={(e) => handleInputChange('dbp', e.target.value)}
+                                        onFocus={handleInputFocus}
+                                        placeholder="80"
+                                        className="w-full px-2 py-4 bg-gray-50 rounded-2xl text-3xl font-black text-center outline-none border-2 border-transparent focus:border-blue-500 transition-all placeholder:text-gray-200"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* MAP Result */}
+                            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-[2rem] py-8 flex flex-col items-center border border-blue-100 shadow-inner">
+                                <span className="text-blue-400 text-xs font-bold tracking-[0.3em] mb-2 uppercase">平均動脈壓結果</span>
+                                <div className="text-7xl font-black text-blue-900 flex items-baseline">
+                                    {map}
+                                    <span className="text-lg font-bold text-blue-300 ml-2">mmHg</span>
+                                </div>
+                            </div>
+
+                            {/* Action Button */}
+                            <div className="pt-2">
+                                <button
+                                    onClick={handleRecordClick}
+                                    disabled={!sbp || !dbp}
+                                    className={`w-full py-5 rounded-2xl text-2xl font-bold shadow-lg transform active:scale-95 transition-all duration-300 flex items-center justify-center gap-3 ${!sbp || !dbp
+                                        ? 'bg-gray-100 text-gray-300 cursor-not-allowed shadow-none'
+                                        : isRecorded
+                                            ? 'bg-green-500 text-white shadow-green-200'
+                                            : 'bg-gray-900 text-white shadow-gray-400'
+                                        }`}
+                                >
+                                    {isRecorded ? '記錄完畢👍' : '確認記錄'}
+                                </button>
+                                {isRecorded && (
+                                    <p className="text-center text-blue-500 text-sm font-bold mt-3 animate-pulse">
+                                        點擊數字欄位即可輸入下一組
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* Footer */}
+                            <div className="pt-4 border-t border-gray-100 text-center">
+                                <span className="inline-block px-3 py-1 bg-gray-50 rounded-full text-[10px] text-gray-400 font-mono">
+                                    公式：(收縮壓 + 2×舒張壓) ÷ 3
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <p className="mt-6 text-gray-400 text-[10px] text-center max-w-[280px] leading-relaxed">
+                        ※ 本工具僅供自我健康管理參考，不具專業醫療診斷建議。
+                    </p>
+
+                    {/* Modals */}
+                    <SettingsModal
+                        isOpen={showSettings}
+                        onClose={() => setShowSettings(false)}
+                        apiKey={apiKey}
+                        setApiKey={setApiKey}
+                    />
+
+                    <CameraModal
+                        isOpen={showCamera && !ocrResult}
+                        onClose={() => setShowCamera(false)}
+                        onCapture={handleImageCapture}
+                        isProcessing={isProcessing}
+                    />
+
+                    {ocrResult && (
+                        <ConfirmDialog
+                            result={ocrResult}
+                            imageSrc={capturedImage}
+                            onConfirm={confirmOcrResult}
+                            onCancel={() => {
+                                setOcrResult(null);
+                                setShowCamera(true); // Back to camera
+                            }}
+                        />
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+
+</html>
