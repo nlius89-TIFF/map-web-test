@@ -227,8 +227,10 @@
 
             // Start Camera
             useEffect(() => {
+                let currentStream = null;
+
                 const initCamera = async () => {
-                    if (!isOpen || stream) return;
+                    if (!isOpen) return;
 
                     // Check for secure context and mediaDevices support
                     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -239,13 +241,14 @@
                     try {
                         const constraints = {
                             video: {
-                                facingMode: 'environment', // Try rear camera first
+                                facingMode: 'environment',
                                 width: { ideal: 1920 },
                                 height: { ideal: 1080 }
                             }
                         };
 
                         const s = await navigator.mediaDevices.getUserMedia(constraints);
+                        currentStream = s;
                         setStream(s);
                         setErrorMsg(null);
                         if (videoRef.current) videoRef.current.srcObject = s;
@@ -265,6 +268,7 @@
                         if (window.location.protocol !== 'file:') {
                             try {
                                 const s = await navigator.mediaDevices.getUserMedia({ video: true });
+                                currentStream = s;
                                 setStream(s);
                                 setErrorMsg(null);
                                 if (videoRef.current) videoRef.current.srcObject = s;
@@ -282,11 +286,12 @@
 
                 // Cleanup function
                 return () => {
-                    if (stream) {
-                        stream.getTracks().forEach(track => track.stop());
+                    if (currentStream) {
+                        currentStream.getTracks().forEach(track => track.stop());
                     }
+                    setStream(null);
                 };
-            }, [isOpen, stream]); // Added stream to dependency for proper cleanup
+            }, [isOpen]); // Only depend on isOpen
 
             // Ensure video plays when reference update
             useEffect(() => {
@@ -299,6 +304,13 @@
                 if (!videoRef.current || !canvasRef.current || isProcessing) return;
 
                 const video = videoRef.current;
+
+                // Safety check: ensure video is actually ready
+                if (video.videoWidth === 0 || video.videoHeight === 0) {
+                    console.warn("Video not ready yet");
+                    return;
+                }
+
                 const canvas = canvasRef.current;
 
                 // Set canvas to video dimension
@@ -312,13 +324,13 @@
                 const imageData = canvas.toDataURL('image/jpeg', 0.8);
                 onCapture(imageData);
 
-                // Stop stream internally is handled by effect cleanup when parent closes modal
-                // But we can stop here too to separate concerns
+                // Do NOT stop stream here manually. 
+                // Let the parent component unmounting this Modal (when isOpen becomes false) trigger the useEffect cleanup.
             };
 
             // Handle closing with cleanup
             const handleClose = () => {
-                setErrorMsg(null); // Reset error
+                setErrorMsg(null);
                 onClose();
             };
 
