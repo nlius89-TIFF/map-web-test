@@ -115,12 +115,13 @@
         );
 
         // --- Services ---
+        // --- Services ---
         const recognizeBloodPressure = async (base64Image, apiKey) => {
             if (!window.GoogleGenerativeAI) throw new Error("Gemini SDK not loaded");
 
+            // Update 2026: Use stable version 2.5
             const genAI = new window.GoogleGenerativeAI(apiKey);
-            // Use specific model version to avoid 404 on some clients/regions
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-001" });
+            const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
             const prompt = `
                 Analyze this image of a blood pressure monitor screen.
@@ -129,10 +130,9 @@
                 Ignore pulse rate, time, or date.
                 Return ONLY a JSON object and nothing else.
                 Format: { "sbp": number, "dbp": number }
-                If the numbers are not clearly visible, return { "error": "Not readable" }
+                If the numbers are legible, return the values. If not, return { "error": "Not readable" }
             `;
 
-            // Prepare base64 string (remove header if present)
             const imagePart = {
                 inlineData: {
                     data: base64Image.split(',')[1],
@@ -144,8 +144,6 @@
                 const result = await model.generateContent([prompt, imagePart]);
                 const response = await result.response;
                 const text = response.text();
-
-                // Clean markdown code blocks if present
                 const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
                 return JSON.parse(cleanText);
             } catch (err) {
@@ -355,7 +353,7 @@
                                 />
 
                                 {/* Overlay Guide */}
-                                <div className="relative z-10 w-11/12 max-w-sm aspect-[4/3] border-4 border-white/70 rounded-3xl shadow-[0_0_0_9999px_rgba(0,0,0,0.6)] overflow-hidden">
+                                <div className="relative z-10 w-full max-w-md aspect-[4/3] border-4 border-white/70 rounded-3xl shadow-[0_0_0_9999px_rgba(0,0,0,0.6)] overflow-hidden mx-4">
                                     <div className="absolute top-0 right-0 p-2 bg-black/50 text-white text-xs rounded-bl-lg font-mono">
                                         7-Segment LCD Mode
                                     </div>
