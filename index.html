@@ -441,7 +441,7 @@
                                 </div>
 
                                 {/* Overlay Guide */}
-                                <div className="relative z-10 w-full max-w-sm aspect-square border-4 border-white/70 rounded-3xl shadow-[0_0_0_9999px_rgba(0,0,0,0.6)] overflow-hidden mx-4">
+                                <div className="relative z-10 w-full max-w-sm aspect-square border-4 border-white/70 rounded-3xl shadow-[0_0_0_9999px_rgba(0,0,0,0.6)] overflow-hidden mx-4 -translate-y-16">
                                     <div className="absolute top-0 right-0 p-2 bg-black/50 text-white text-xs rounded-bl-lg font-mono">
                                         7-Segment LCD Mode
                                     </div>
@@ -453,20 +453,20 @@
                                 </div>
 
                                 {/* Text Instruction - Moved up to avoid overlap */}
-                                <p className="absolute bottom-52 text-white/90 text-sm font-medium bg-black/40 px-4 py-2 rounded-full backdrop-blur-sm pointer-events-none">
+                                <p className="absolute bottom-64 text-white/90 text-sm font-medium bg-black/40 px-4 py-2 rounded-full backdrop-blur-sm pointer-events-none">
                                     將數字對準框內(盡量充滿畫面)
                                 </p>
 
                                 {/* Camera Switcher - Horizontal Row above shutter */}
                                 {cameras.length > 1 && (
-                                    <div className="absolute bottom-32 w-full flex justify-center gap-4 z-30">
+                                    <div className="absolute bottom-40 w-full flex justify-center gap-4 z-30">
                                         {cameras.map((cam, idx) => (
                                             <button
                                                 key={cam.deviceId}
                                                 onClick={() => switchCamera(cam.deviceId)}
                                                 className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold border transition-all shadow-lg ${selectedDeviceId === cam.deviceId || (!selectedDeviceId && idx === 0 && !selectedDeviceId)
-                                                        ? "bg-white text-black border-white scale-110 ring-2 ring-black/20"
-                                                        : "bg-[#333333] text-white border-white opacity-100"
+                                                    ? "bg-white text-black border-white scale-110 ring-2 ring-black/20"
+                                                    : "bg-[#333333] text-white border-white opacity-100"
                                                     }`}
                                             >
                                                 {/* Use Icon or Index? User requested index mapping in previous plan, but here just "buttons". 
