@@ -628,7 +628,7 @@
                 }
             }, [sbp, dbp]);
 
-            const handleInputChange = (type, value) => {
+            function handleInputChange(type, value) {
                 const cleaned = value.replace(/\D/g, '');
                 setIsRecorded(false);
 
@@ -651,13 +651,16 @@
                         if (overflow.length > 0) {
                             setDbp(overflow.substring(0, 3));
                         }
-                        // Timeout ensures focus happens after state updates if needed
-                        setTimeout(() => dbpInputRef.current?.focus(), 0);
+                        setTimeout(() => {
+                            if (dbpInputRef.current) {
+                                dbpInputRef.current.focus();
+                            }
+                        }, 0);
                     }
                 } else if (type === 'dbp') {
                     setDbp(cleaned.substring(0, 3));
                 }
-            };
+            }
 
             const handleInputFocus = () => {
                 if (isRecorded) {
