@@ -651,7 +651,7 @@
                         if (overflow.length > 0) {
                             setDbp(overflow.substring(0, 3));
                         }
-                        setTimeout(() => {
+                        setTimeout(function () {
                             if (dbpInputRef.current) {
                                 dbpInputRef.current.focus();
                             }
