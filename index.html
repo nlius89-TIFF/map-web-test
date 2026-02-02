@@ -628,7 +628,7 @@
                 }
             }, [sbp, dbp]);
 
-            function handleInputChange(type, value) {
+            const handleInputChange = (type, value) => {
                 const cleaned = value.replace(/\D/g, '');
                 setIsRecorded(false);
 
@@ -660,7 +660,7 @@
                 } else if (type === 'dbp') {
                     setDbp(cleaned.substring(0, 3));
                 }
-            }
+            };
 
             const handleInputFocus = () => {
                 if (isRecorded) {
