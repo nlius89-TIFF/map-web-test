@@ -629,20 +629,34 @@
             }, [sbp, dbp]);
 
             const handleInputChange = (type, value) => {
-                if (value.length > 3) return;
-                if (type === 'sbp') {
-                    setSbp(value);
-                    if (value.length > 0) {
-                        const firstDigit = value[0];
-                        if (firstDigit === '1' || firstDigit === '2') {
-                            if (value.length >= 3) dbpInputRef.current?.focus();
-                        } else {
-                            if (value.length >= 2) dbpInputRef.current?.focus();
-                        }
-                    }
-                }
-                if (type === 'dbp') setDbp(value);
+                const cleaned = value.replace(/\D/g, '');
                 setIsRecorded(false);
+
+                if (type === 'sbp') {
+                    if (cleaned.length === 0) {
+                        setSbp('');
+                        return;
+                    }
+
+                    const firstDigit = cleaned[0];
+                    const isThreeDigitStart = (firstDigit === '1' || firstDigit === '2');
+                    const sbpLimit = isThreeDigitStart ? 3 : 2;
+
+                    const systolicValue = cleaned.substring(0, sbpLimit);
+                    const overflow = cleaned.substring(sbpLimit);
+
+                    setSbp(systolicValue);
+
+                    if (systolicValue.length >= sbpLimit) {
+                        if (overflow.length > 0) {
+                            setDbp(overflow.substring(0, 3));
+                        }
+                        // Timeout ensures focus happens after state updates if needed
+                        setTimeout(() => dbpInputRef.current?.focus(), 0);
+                    }
+                } else if (type === 'dbp') {
+                    setDbp(cleaned.substring(0, 3));
+                }
             };
 
             const handleInputFocus = () => {
